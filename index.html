@@ -147,47 +147,40 @@
     let overlayOpen = false;
     let tilesDetected = false;
 
-    // Detect cyanotype blue + periodic square tile grid (evenly-spaced grout lines)
+    // Detect cyanotype tile wall: significant blue distributed across the whole frame
+    // (a single paper or one tile concentrates blue in one area; a wall fills every zone)
     function detectTiles() {
       if (!video.videoWidth) return false;
       ctx.drawImage(video, 0, 0, 64, 64);
       const data = ctx.getImageData(0, 0, 64, 64).data;
 
-      let cyanCount = 0;
-      const gray = new Uint8Array(64 * 64);
-      for (let i = 0; i < 64 * 64; i++) {
-        const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
-        if (b > r + 20 && b > g + 12 && b > 70 && b < 200 && r < 160) cyanCount++;
-        gray[i] = Math.round(0.299*r + 0.587*g + 0.114*b);
-      }
-      if (cyanCount / (64*64) < 0.20) return false; // need 20%+ cyanotype blue
+      // 3×3 grid of zones — count cyanotype blue pixels in each
+      const zones = new Array(9).fill(0);
+      const zoneSize = new Array(9).fill(0);
+      let totalCyan = 0;
 
-      // Compute row and column brightness averages
-      const row = new Float32Array(64), col = new Float32Array(64);
-      for (let y = 0; y < 64; y++)
-        for (let x = 0; x < 64; x++) { row[y] += gray[y*64+x]; col[x] += gray[y*64+x]; }
-      for (let i = 0; i < 64; i++) { row[i] /= 64; col[i] /= 64; }
-
-      // Find local minima (grout lines = darker bands)
-      function minima(arr) {
-        const m = [];
-        for (let i = 2; i < 62; i++)
-          if (arr[i] < arr[i-1] && arr[i] < arr[i+1] && arr[i] < arr[i-2] && arr[i] < arr[i+2])
-            m.push(i);
-        return m;
+      for (let y = 0; y < 64; y++) {
+        for (let x = 0; x < 64; x++) {
+          const i = (y * 64 + x) * 4;
+          const r = data[i], g = data[i+1], b = data[i+2];
+          const z = Math.floor(y / 22) * 3 + Math.floor(x / 22); // zone 0-8
+          if (z > 8) continue;
+          zoneSize[z]++;
+          // Loosened upper bound for screen/projector (brighter blues than physical tiles)
+          if (b > r + 15 && b > g + 8 && b > 60 && b < 240 && r < 180) {
+            zones[z]++;
+            totalCyan++;
+          }
+        }
       }
 
-      // Check minima are evenly spaced (periodic grid, 5–25px apart = 3–12 tiles visible)
-      function isRegular(m) {
-        if (m.length < 2) return false;
-        const gaps = m.slice(1).map((v,i) => v - m[i]);
-        const avg = gaps.reduce((a,b)=>a+b,0) / gaps.length;
-        if (avg < 5 || avg > 25) return false;
-        const std = Math.sqrt(gaps.reduce((a,b)=>a+Math.pow(b-avg,2),0)/gaps.length);
-        return std < avg * 0.35; // gaps consistent within 35%
-      }
+      // Overall blue must be substantial
+      if (totalCyan / (64 * 64) < 0.18) return false;
 
-      return isRegular(minima(row)) && isRegular(minima(col));
+      // Blue must appear in at least 6 of 9 zones
+      // (8 for physical wall filling frame; 6 for monitor/projection which may not fill edges)
+      const zonesWithBlue = zones.filter((c, i) => c / (zoneSize[i] || 1) > 0.10).length;
+      return zonesWithBlue >= 6;
     }
 
     function checkFrame() {
