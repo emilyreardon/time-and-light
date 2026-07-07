@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Time and Light</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: black;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: Georgia, serif;
+    }
+
+    /* Live camera feed fills the screen */
+    #camera {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 1s ease;
+    }
+    #camera.ready { opacity: 1; }
+
+    /* Dark scrim — lightens once camera is ready */
+    #scrim {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 15, 0.55);
+      transition: background 1s ease;
+      z-index: 1;
+    }
+    #scrim.dim { background: rgba(5, 8, 15, 0.25); }
+
+    /* Tap prompt */
+    #prompt {
+      position: fixed;
+      bottom: 2.5rem;
+      width: 100%;
+      text-align: center;
+      color: rgba(255,255,255,0.4);
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+      z-index: 10;
+      transition: opacity 0.5s;
+    }
+    #prompt.hidden { opacity: 0; pointer-events: none; }
+
+    /* GIF overlay */
+    #gif-wrap {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(5, 8, 15, 0.6);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+    #gif-wrap.visible {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    #gif-img {
+      max-width: 88vw;
+      max-height: 78vh;
+      display: block;
+      border-radius: 2px;
+    }
+
+    #gif-name {
+      margin-top: 0.9rem;
+      color: rgba(255,255,255,0.6);
+      font-size: 0.85rem;
+      letter-spacing: 0.2em;
+      text-transform: lowercase;
+    }
+
+    #gif-dismiss {
+      margin-top: 1.5rem;
+      color: rgba(255,255,255,0.25);
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+    }
+
+    /* No-camera fallback */
+    #nocamera {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #05080f;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+
+  <video id="camera" autoplay playsinline muted></video>
+  <div id="scrim"></div>
+  <div id="prompt">tap to open</div>
+
+  <div id="gif-wrap">
+    <img id="gif-img" src="" alt="">
+    <div id="gif-name"></div>
+    <div id="gif-dismiss">tap to close</div>
+  </div>
+
+  <div id="nocamera"></div>
+
+  <script>
+    const gifs = [
+      { name: 'alice',   src: 'alice.gif' },
+      { name: 'gail',    src: 'gail_1.gif' },
+      { name: 'gail',    src: 'gail_2.gif' },
+      { name: 'maureen', src: 'maureen_1.gif' },
+      { name: 'maureen', src: 'maureen_2.gif' },
+      { name: 'emily',   src: 'emily_1.gif' },
+      { name: 'emily',   src: 'emily_2.gif' },
+      { name: 'emily',   src: 'emily_3.gif' },
+      { name: 'johanna', src: 'johanna_1.gif' },
+      { name: 'johanna', src: 'johanna_2.gif' },
+      { name: 'johanna', src: 'johanna_3.gif' },
+    ];
+
+    const video    = document.getElementById('camera');
+    const scrim    = document.getElementById('scrim');
+    const prompt   = document.getElementById('prompt');
+    const gifWrap  = document.getElementById('gif-wrap');
+    const gifImg   = document.getElementById('gif-img');
+    const gifName  = document.getElementById('gif-name');
+
+    let last = -1;
+    let overlayOpen = false;
+
+    // Start camera
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }, audio: false
+        });
+        video.srcObject = stream;
+        video.addEventListener('playing', () => {
+          video.classList.add('ready');
+          scrim.classList.add('dim');
+        });
+      } catch (e) {
+        // No camera or denied — fall back to dark background, still works
+        document.getElementById('nocamera').style.display = 'block';
+      }
+    }
+
+    function pickGif() {
+      let idx;
+      do { idx = Math.floor(Math.random() * gifs.length); } while (idx === last && gifs.length > 1);
+      last = idx;
+      return gifs[idx];
+    }
+
+    function openGif() {
+      const g = pickGif();
+      gifImg.src = '';
+      gifImg.src = g.src;
+      gifName.textContent = g.name;
+      gifWrap.classList.add('visible');
+      prompt.classList.add('hidden');
+      overlayOpen = true;
+    }
+
+    function closeGif() {
+      gifWrap.classList.remove('visible');
+      prompt.classList.remove('hidden');
+      overlayOpen = false;
+    }
+
+    document.body.addEventListener('click', (e) => {
+      if (overlayOpen) {
+        closeGif();
+      } else {
+        openGif();
+      }
+    });
+
+    startCamera();
+  </script>
+
+</body>
+</html>
