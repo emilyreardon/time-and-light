@@ -43,12 +43,13 @@
       bottom: 2.5rem;
       width: 100%;
       text-align: center;
-      color: rgba(255,255,255,0.4);
       font-size: 0.75rem;
       letter-spacing: 0.15em;
       z-index: 10;
-      transition: opacity 0.5s;
+      transition: color 0.6s, opacity 0.5s;
+      color: rgba(255,255,255,0.25);
     }
+    #prompt.detected { color: rgba(255,255,255,0.7); }
     #prompt.hidden { opacity: 0; pointer-events: none; }
 
     /* GIF overlay */
@@ -105,8 +106,9 @@
 <body>
 
   <video id="camera" autoplay playsinline muted></video>
+  <canvas id="sample" style="display:none" width="64" height="64"></canvas>
   <div id="scrim"></div>
-  <div id="prompt">tap to open</div>
+  <div id="prompt">point at the tiles</div>
 
   <div id="gif-wrap">
     <img id="gif-img" src="" alt="">
@@ -118,17 +120,17 @@
 
   <script>
     const gifs = [
-      { name: 'alice',   src: 'alice.gif' },
-      { name: 'gail',    src: 'gail_1.gif' },
-      { name: 'gail',    src: 'gail_2.gif' },
-      { name: 'maureen', src: 'maureen_1.gif' },
-      { name: 'maureen', src: 'maureen_2.gif' },
-      { name: 'emily',   src: 'emily_1.gif' },
-      { name: 'emily',   src: 'emily_2.gif' },
-      { name: 'emily',   src: 'emily_3.gif' },
-      { name: 'johanna', src: 'johanna_1.gif' },
-      { name: 'johanna', src: 'johanna_2.gif' },
-      { name: 'johanna', src: 'johanna_3.gif' },
+      { name: 'Alice',   src: 'alice.gif' },
+      { name: 'Gail',    src: 'gail_1.gif' },
+      { name: 'Gail',    src: 'gail_2.gif' },
+      { name: 'Maureen', src: 'maureen_1.gif' },
+      { name: 'Maureen', src: 'maureen_2.gif' },
+      { name: 'Emily',   src: 'emily_1.gif' },
+      { name: 'Emily',   src: 'emily_2.gif' },
+      { name: 'Emily',   src: 'emily_3.gif' },
+      { name: 'Johanna', src: 'johanna_1.gif' },
+      { name: 'Johanna', src: 'johanna_2.gif' },
+      { name: 'Johanna', src: 'johanna_3.gif' },
     ];
 
     const video    = document.getElementById('camera');
@@ -138,8 +140,61 @@
     const gifImg   = document.getElementById('gif-img');
     const gifName  = document.getElementById('gif-name');
 
+    const canvas  = document.getElementById('sample');
+    const ctx     = canvas.getContext('2d', { willReadFrequently: true });
+
     let last = -1;
     let overlayOpen = false;
+    let tilesDetected = false;
+
+    // Detect cyanotype blue + square tile grid (grout lines = balanced H+V edges)
+    function detectTiles() {
+      if (!video.videoWidth) return false;
+      ctx.drawImage(video, 0, 0, 64, 64);
+      const data = ctx.getImageData(0, 0, 64, 64).data;
+
+      let cyanCount = 0;
+      const gray = new Float32Array(64 * 64);
+
+      for (let i = 0; i < 64 * 64; i++) {
+        const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+        if (b > r + 15 && b > g + 8 && b > 60 && b < 210 && r < 180) cyanCount++;
+        gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+      }
+
+      if (cyanCount / (64 * 64) < 0.12) return false; // not enough cyanotype blue
+
+      // Count strong horizontal and vertical edges (grout lines)
+      let hEdge = 0, vEdge = 0;
+      for (let y = 1; y < 63; y++) {
+        for (let x = 1; x < 63; x++) {
+          hEdge += Math.abs(gray[(y+1)*64+x] - gray[(y-1)*64+x]);
+          vEdge += Math.abs(gray[y*64+x+1]   - gray[y*64+x-1]);
+        }
+      }
+
+      const total = hEdge + vEdge;
+      if (total < 60000) return false; // not enough edge activity for a tile grid
+
+      // Square tiles: horizontal and vertical edge energy should be roughly equal
+      const ratio = hEdge / (vEdge + 1);
+      return ratio > 0.55 && ratio < 1.8;
+    }
+
+    function checkFrame() {
+      if (overlayOpen) return;
+      const seen = detectTiles();
+      if (seen !== tilesDetected) {
+        tilesDetected = seen;
+        if (seen) {
+          prompt.textContent = 'tap to open';
+          prompt.classList.add('detected');
+        } else {
+          prompt.textContent = 'point at the tiles';
+          prompt.classList.remove('detected');
+        }
+      }
+    }
 
     // Start camera
     async function startCamera() {
@@ -151,9 +206,9 @@
         video.addEventListener('playing', () => {
           video.classList.add('ready');
           scrim.classList.add('dim');
+          setInterval(checkFrame, 400);
         });
       } catch (e) {
-        // No camera or denied — fall back to dark background, still works
         document.getElementById('nocamera').style.display = 'block';
       }
     }
@@ -181,10 +236,10 @@
       overlayOpen = false;
     }
 
-    document.body.addEventListener('click', (e) => {
+    document.body.addEventListener('click', () => {
       if (overlayOpen) {
         closeGif();
-      } else {
+      } else if (tilesDetected) {
         openGif();
       }
     });
