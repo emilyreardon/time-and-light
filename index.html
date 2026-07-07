@@ -147,38 +147,47 @@
     let overlayOpen = false;
     let tilesDetected = false;
 
-    // Detect cyanotype blue + square tile grid (grout lines = balanced H+V edges)
+    // Detect cyanotype blue + periodic square tile grid (evenly-spaced grout lines)
     function detectTiles() {
       if (!video.videoWidth) return false;
       ctx.drawImage(video, 0, 0, 64, 64);
       const data = ctx.getImageData(0, 0, 64, 64).data;
 
       let cyanCount = 0;
-      const gray = new Float32Array(64 * 64);
-
+      const gray = new Uint8Array(64 * 64);
       for (let i = 0; i < 64 * 64; i++) {
         const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
-        if (b > r + 15 && b > g + 8 && b > 60 && b < 210 && r < 180) cyanCount++;
-        gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (b > r + 20 && b > g + 12 && b > 70 && b < 200 && r < 160) cyanCount++;
+        gray[i] = Math.round(0.299*r + 0.587*g + 0.114*b);
+      }
+      if (cyanCount / (64*64) < 0.20) return false; // need 20%+ cyanotype blue
+
+      // Compute row and column brightness averages
+      const row = new Float32Array(64), col = new Float32Array(64);
+      for (let y = 0; y < 64; y++)
+        for (let x = 0; x < 64; x++) { row[y] += gray[y*64+x]; col[x] += gray[y*64+x]; }
+      for (let i = 0; i < 64; i++) { row[i] /= 64; col[i] /= 64; }
+
+      // Find local minima (grout lines = darker bands)
+      function minima(arr) {
+        const m = [];
+        for (let i = 2; i < 62; i++)
+          if (arr[i] < arr[i-1] && arr[i] < arr[i+1] && arr[i] < arr[i-2] && arr[i] < arr[i+2])
+            m.push(i);
+        return m;
       }
 
-      if (cyanCount / (64 * 64) < 0.12) return false; // not enough cyanotype blue
-
-      // Count strong horizontal and vertical edges (grout lines)
-      let hEdge = 0, vEdge = 0;
-      for (let y = 1; y < 63; y++) {
-        for (let x = 1; x < 63; x++) {
-          hEdge += Math.abs(gray[(y+1)*64+x] - gray[(y-1)*64+x]);
-          vEdge += Math.abs(gray[y*64+x+1]   - gray[y*64+x-1]);
-        }
+      // Check minima are evenly spaced (periodic grid, 5–25px apart = 3–12 tiles visible)
+      function isRegular(m) {
+        if (m.length < 2) return false;
+        const gaps = m.slice(1).map((v,i) => v - m[i]);
+        const avg = gaps.reduce((a,b)=>a+b,0) / gaps.length;
+        if (avg < 5 || avg > 25) return false;
+        const std = Math.sqrt(gaps.reduce((a,b)=>a+Math.pow(b-avg,2),0)/gaps.length);
+        return std < avg * 0.35; // gaps consistent within 35%
       }
 
-      const total = hEdge + vEdge;
-      if (total < 60000) return false; // not enough edge activity for a tile grid
-
-      // Square tiles: horizontal and vertical edge energy should be roughly equal
-      const ratio = hEdge / (vEdge + 1);
-      return ratio > 0.55 && ratio < 1.8;
+      return isRegular(minima(row)) && isRegular(minima(col));
     }
 
     function checkFrame() {
