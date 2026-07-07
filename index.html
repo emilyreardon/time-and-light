@@ -174,8 +174,8 @@
         }
       }
 
-      // Overall blue must be substantial
-      if (totalCyan / (64 * 64) < 0.18) return false;
+      // Overall blue must be substantial (15% covers both physical tiles and screen)
+      if (totalCyan / (64 * 64) < 0.15) return false;
 
       // Blue must appear in at least 6 of 9 zones
       // (8 for physical wall filling frame; 6 for monitor/projection which may not fill edges)
